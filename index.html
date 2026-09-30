@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Leystones Waybook</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,650;1,9..144,400&family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
+<!--
+  The shared Waybook page for Leystones. Anyone with a link (…/?t=TOKEN) sees a snapshot of one excursion:
+  a cover with the whole route, then a page per day with its line, note, photos, voice notes and public stones.
+  ?print=1 opens the print dialog (print as a booklet, or save as PDF).
+  It reads Leystones' public "waybook_public" function with the public (anon) key; nothing else is reachable.
+  Host it anywhere static (GitHub Pages: a public repo with this file as index.html).
+-->
+<style>
+  :root {
+    --bg: #F4F0E7; --card: #FFFDF8; --border: #DDD5C4; --text: #1E2621; --muted: #5A6259;
+    --moss: #33523D; --ley: #C9873A; --history: #B8901C; --nature: #4E7A46; --adventure: #B0512F;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 Figtree, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1, h2 { font-family: Fraunces, Georgia, serif; font-weight: 650; line-height: 1.15; margin: 0; }
+  h1 { font-size: clamp(30px, 7vw, 46px); }
+  h2 { font-size: 26px; }
+  .kicker { font: 700 11px/1.2 Figtree, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--ley); }
+  .muted { color: var(--muted); }
+  .page { background: var(--card); border: 1px solid var(--border); border-radius: 22px; padding: 24px; margin: 16px 0; }
+  .cover { text-align: center; padding: 32px 24px; }
+  .cover .quote { font: italic 400 20px/1.4 Fraunces, Georgia, serif; margin: 14px auto 0; max-width: 32em; }
+  .stats { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+  .stat { border: 1px solid var(--border); border-radius: 14px; padding: 8px 10px; min-width: 72px; flex: 1 1 0; max-width: 140px; }
+  .stat b { display: block; font: 650 20px/1.2 Fraunces, serif; }
+  .stat span { font: 700 9px/1.2 Figtree, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  svg.route { width: 100%; height: auto; display: block; margin: 18px 0 6px; background: #EFE9DA; border-radius: 16px; }
+  .note { font: italic 400 19px/1.5 Fraunces, Georgia, serif; margin: 14px 0 4px; }
+  .entry { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+  .entry img { width: 100%; border-radius: 14px; display: block; margin: 6px 0; }
+  .entry audio { width: 100%; margin: 6px 0; }
+  .time { font-size: 13px; color: var(--muted); }
+  .stone { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding: 8px 0; }
+  .bead { width: 12px; height: 12px; border-radius: 6px; flex: none; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; justify-content: flex-end; padding: 10px 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); }
+  button { font: 700 15px Figtree, sans-serif; border-radius: 22px; padding: 10px 18px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--moss); color: #fff; border-color: var(--moss); }
+  .footer { text-align: center; font-size: 13px; color: var(--muted); margin-top: 28px; }
+  .empty { text-align: center; padding: 80px 16px; }
+  /* Print: a booklet, one page per day */
+  @page { size: 5.5in 8.5in; margin: 0.45in; }
+  @media print {
+    html, body { background: #fff; font-size: 11.5pt; }
+    main { max-width: none; padding: 0; }
+    .bar, .footer .web { display: none; }
+    .page { background: #fff; border: none; border-radius: 0; padding: 0; margin: 0; break-after: page; }
+    .page:last-of-type { break-after: auto; }
+    .cover { display: flex; flex-direction: column; justify-content: center; min-height: 7.4in; }
+    svg.route { background: #F6F2E8; }
+    .entry, .stone, img { break-inside: avoid; }
+    audio { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar" id="bar" hidden>
+  <button id="copy">Copy link</button>
+  <button class="primary" id="print">Print or save PDF</button>
+</div>
+<main id="app"><p class="empty muted">Opening the Waybook…</p></main>
+<script>
+// Leystones' public address and publishable key (safe to publish: they only reach what the database allows anonymously).
+const SUPABASE_URL = 'https://uqgyjubljotisinjskjv.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxZ3lqdWJsam90aXNpbmpza2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1NTk0MTksImV4cCI6MjEwNjEzNTQxOX0.E3ReBvwRR6RwUT0I_AGtRBue0NkkZkpVh_z-zRg81vM';
+const LENS = { history: 'var(--history)', nature: 'var(--nature)', adventure: 'var(--adventure)' };
+const KIND = { found: 'Found', set: 'Left', discovered: 'Discovered', plant: 'Named' };
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const safeUrl = (u) => (typeof u === 'string' && /^https:\/\//.test(u) ? u : '');
+const dist = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`);
+const span = (min) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`);
+const clock = (iso) => new Date(iso).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
+const dayTitle = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+const range = (a, b) => {
+  const f = { month: 'long', day: 'numeric', year: 'numeric' };
+  const x = new Date(a).toLocaleDateString('en-CA', f), y = new Date(b).toLocaleDateString('en-CA', f);
+  return x === y ? x : `${x} – ${y}`;
+};
+
+/** A route drawn as a leyline on paper: equirectangular, fitted to the box. Beads for public stones. */
+function routeSvg(lines, beads, w = 640, h = 380) {
+  const pts = lines.flat().concat(beads.map((b) => [b.lng, b.lat]));
+  if (pts.length < 2) return '';
+  const lat0 = (pts.reduce((s, p) => s + p[1], 0) / pts.length) * Math.PI / 180;
+  const xy = ([lng, lat]) => [lng * Math.cos(lat0), -lat];
+  const P = pts.map(xy);
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const pad = 28, sw = Math.max(x1 - x0, 1e-6), sh = Math.max(y1 - y0, 1e-6);
+  const k = Math.min((w - 2 * pad) / sw, (h - 2 * pad) / sh);
+  const ox = (w - sw * k) / 2, oy = (h - sh * k) / 2;
+  const T = (p) => { const [x, y] = xy(p); return [ox + (x - x0) * k, oy + (y - y0) * k]; };
+  const path = (l) => l.map((p, i) => { const [x, y] = T(p); return `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`; }).join('');
+  const d = lines.filter((l) => l.length > 1).map(path).join('');
+  const dots = beads.map((b) => { const [x, y] = T([b.lng, b.lat]); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" fill="${LENS[b.lens] || 'var(--moss)'}" stroke="#FFFDF8" stroke-width="3.5"/>`; }).join('');
+  return `<svg class="route" viewBox="0 0 ${w} ${h}" role="img" aria-label="The route">
+    <path d="${d}" fill="none" stroke="var(--ley)" stroke-opacity=".22" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${d}" fill="none" stroke="var(--ley)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>${dots}</svg>`;
+}
+
+function render(w) {
+  document.title = `${w.title} · a Leystones Waybook`;
+  const moments = w.moments || [];
+  const day = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const by = w.byMode && (w.byMode.drive > 0 || w.byMode.fly > 0)
+    ? [`On foot ${dist(w.byMode.walk)}`, w.byMode.drive > 0 ? `by road ${dist(w.byMode.drive)}` : '', w.byMode.fly > 0 ? `flown ${dist(w.byMode.fly)}` : ''].filter(Boolean).join(' · ')
+    : '';
+  let html = `<section class="page cover">
+    <div class="kicker">${w.owner ? `${esc(w.owner)}'s Waybook` : 'A Waybook'}</div>
+    <h1 style="margin-top:10px">${esc(w.title)}</h1>
+    <p class="muted" style="margin:8px 0 0">${esc(range(w.startedAt, w.endedAt))}${w.destination ? ` · toward ${esc(w.destination)}` : ''}</p>
+    ${w.intention ? `<p class="quote">“${esc(w.intention)}”</p>` : ''}
+    ${routeSvg(w.days.map((d) => d.line), moments)}
+    <div class="stats">
+      <div class="stat"><b>${dist(w.stats.distanceM)}</b><span>Distance</span></div>
+      <div class="stat"><b>${span(w.stats.minutes)}</b><span>Time out</span></div>
+      <div class="stat"><b>${w.stats.days}</b><span>${w.stats.days === 1 ? 'Day' : 'Days'}</span></div>
+      <div class="stat"><b>${moments.length + (w.privateMoments || 0)}</b><span>Stones</span></div>
+    </div>
+    ${by ? `<p class="muted" style="font-size:14px;margin-top:10px">${esc(by)}</p>` : ''}
+  </section>`;
+  w.days.forEach((d, i) => {
+    const stones = moments.filter((m) => day(m.at) === d.date);
+    html += `<section class="page">
+      <div class="kicker">${w.days.length > 1 ? `Day ${i + 1}` : 'The day'}</div>
+      <h2 style="margin-top:6px">${esc(dayTitle(d.date))}</h2>
+      <p class="time" style="margin:4px 0 0">${clock(d.from)} – ${clock(d.to)} · ${dist(d.distanceM)}</p>
+      ${d.line.length > 1 ? routeSvg([d.line], stones, 640, 300) : ''}
+      ${d.note ? `<p class="note">${esc(d.note)}</p>` : ''}
+      ${d.entries.map((e) => `<div class="entry">
+        <div class="time">${clock(e.at)}</div>
+        ${safeUrl(e.photoUrl) ? `<img src="${esc(safeUrl(e.photoUrl))}" alt="" loading="lazy">` : ''}
+        ${safeUrl(e.audioUrl) ? `<audio controls preload="none" src="${esc(safeUrl(e.audioUrl))}"></audio>` : ''}
+        ${e.text ? `<p style="margin:4px 0">${esc(e.text)}</p>` : ''}
+      </div>`).join('')}
+      ${stones.map((m) => `<div class="stone"><span class="bead" style="background:${LENS[m.lens] || 'var(--moss)'}"></span>
+        <div><b>${esc(m.title)}</b><div class="time">${KIND[m.kind] || 'A moment'} · ${clock(m.at)}</div></div></div>`).join('')}
+      ${!d.note && !d.entries.length && !stones.length ? '<p class="muted">A quiet day.</p>' : ''}
+    </section>`;
+  });
+  if (w.privateMoments) html += `<p class="footer">…and ${w.privateMoments} private ${w.privateMoments === 1 ? 'stone' : 'stones'}, kept between friends.</p>`;
+  html += `<p class="footer">Made with Leystones<span class="web"> · the places that remember</span></p>`;
+  document.getElementById('app').innerHTML = html;
+  document.getElementById('bar').hidden = false;
+}
+
+async function main() {
+  const q = new URLSearchParams(location.search);
+  const token = q.get('t');
+  const app = document.getElementById('app');
+  if (!token) { app.innerHTML = '<p class="empty muted">This Waybook link is missing its key.</p>'; return; }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/waybook_public`, {
+      method: 'POST',
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_token: token }),
+    });
+    const w = r.ok ? await r.json() : null;
+    if (!w || !w.days) { app.innerHTML = '<p class="empty muted">This Waybook isn’t shared any more, or the link is wrong.</p>'; return; }
+    render(w);
+    document.getElementById('print').onclick = () => window.print();
+    document.getElementById('copy').onclick = async (ev) => {
+      const u = new URL(location.href); u.searchParams.delete('print');
+      try { await navigator.clipboard.writeText(u.toString()); ev.target.textContent = 'Copied'; } catch { ev.target.textContent = u.toString(); }
+    };
+    if (q.get('print') === '1') {
+      await document.fonts?.ready;
+      await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((ok) => { i.onload = i.onerror = ok; }))));
+      setTimeout(() => window.print(), 300);
+    }
+  } catch {
+    app.innerHTML = '<p class="empty muted">Couldn’t reach Leystones. Check your connection and try again.</p>';
+  }
+}
+main();
+</script>
+</body>
+</html>
